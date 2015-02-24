@@ -9,15 +9,21 @@ function replace(match, content) {
 
 var _require = (function() {
 	var is_ = /\._\.js$/;
-	
-	return function _require(path) {
+		
+	function _require(path) {
 		if (is_.test(path)) {
-			return compile(path);
+			if (!(path in _require.cache)) {
+				return _require.cache[path] = compile(path);
+			}
+			return _require.cache[path];
 		}
 		else {
 			return require.apply(this, arguments);
 		}
 	};
+	_require.cache = {};
+
+	return _require;
 })();
 
 function compile(path, root) {
@@ -30,8 +36,13 @@ function compile(path, root) {
 	);
 
 	if (compile.log) {
-		fs.appendFileSync(compile.log, "\\"+path+"\n"+ src + "\n\n");
-		//fs.appendFileSync(root+compile.log, "\\\\ Compiled "+path+":\n\n"+ src + "\n\n\\\\ End of File\n\n");
+		console.log("appending generated js ("+path+") to log...");
+		fs.appendFileSync(
+			compile.log,
+			"// Compiled " + path + ":\n" +
+			src +
+			"\n// End of File\n\n"
+		);
 	}
 
 	if (root) {

@@ -1,6 +1,8 @@
 src/
 build/
 test.js
+quick-host.bat
+test.bat
 
 # Windows image file caches
 Thumbs.db
