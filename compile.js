@@ -1,4 +1,4 @@
-var fs = require("fs");
+var fs = require("fs"), _path = require("path");
 
 var find = /\b_\/\*([\W\w]*?)\*\//g;
 var findSpecials = /(["\\])/g;
@@ -26,9 +26,11 @@ var _require = (function() {
 	return _require;
 })();
 
-function compile(path, root) {
+function compile(path, root, log) {
 	if (!root) { root = ""; }
-	else { root = "./" + root + "/"; }
+	else { root = root + "/"; }
+
+	console.log("compiling "+_path.relative(root, root+path));
 
 	var src = (
 		fs.readFileSync(root + path, "utf-8").replace(find, replace) +
@@ -36,7 +38,6 @@ function compile(path, root) {
 	);
 
 	if (compile.log) {
-		console.log("appending generated js ("+path+") to log...");
 		fs.appendFileSync(
 			compile.log,
 			"// Compiled " + path + ":\n" +
@@ -50,12 +51,13 @@ function compile(path, root) {
 		process.chdir(root);
 	}
 
-	var exports = new Function("require,module", src)(
+	var exports = new Function("require,module,filepath", src)(
 		function(path) {
 			if (path.indexOf("./") === 0) { path = process.cwd() + "\\" + path.substring(2); }
 			return _require(path);
 		},
-		{ exports: { } }
+		{ exports: { } },
+		path
 	);
 
 	if (root) {
