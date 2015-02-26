@@ -1,2 +1,2 @@
 var log = process.argv[process.argv.length - 1];
-require("./build.js")(process.argv[0], process.argv[1], !!log, log[log.length - 1] === "!");
+require("./build.js")(process.argv[2], process.argv[3], log.indexOf("-log") === 0, log === "-log!");
