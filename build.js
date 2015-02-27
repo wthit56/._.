@@ -16,7 +16,7 @@ function ensureFilepath(root, filepath) {
 	});
 }
 
-function build(src, build, log, overwriteLog) {
+function build(src, srcRebuilds, build, log, overwriteLog) {
 	if (log) {
 		var logDest = path.join(src, "-compiled.js");
 		if (overwriteLog || !fs.existsSync(logDest)) {
@@ -38,6 +38,13 @@ function build(src, build, log, overwriteLog) {
 
 	buildPath(src, "", build);
 
+	if (srcRebuilds && (srcRebuilds.length > 0)) {
+		srcRebuilds.forEach(function(_path) {
+			console.log("rebuilding " + _path);
+			buildFile(src, _path, build);
+		});
+	}
+
 	compile.log = null;
 }
 
@@ -53,7 +60,8 @@ function buildPath(src, _path, build) {
 				buildFile(src, filepath, build);
 			}
 			else {
-				console.log("copying "+filepath);
+				console.log("copying " + filepath);
+				ensureFilepath(build, filepath);
 				fs.writeFileSync(
 					path.join(build, filepath),
 					fs.readFileSync(path.join(src, filepath))
@@ -66,9 +74,12 @@ function buildPath(src, _path, build) {
 function buildFile(srcRoot, src, buildRoot) {
 	var built = src.substring(0, src.length - 5);
 	ensureFilepath(buildRoot, built);
-	var data = compile(src, srcRoot);
+	var data = compile(src, srcRoot, { srcpath: path.join(srcRoot, src), buildpath: built });
+
+	if (!data) { console.log(src, "==", data); }
 
 	fs.writeFileSync(path.join(buildRoot, built), data);
 }
+
 
 module.exports = build;

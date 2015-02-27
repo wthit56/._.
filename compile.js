@@ -12,10 +12,7 @@ var _require = (function() {
 		
 	function _require(path) {
 		if (is_.test(path)) {
-			if (!(path in _require.cache)) {
-				return _require.cache[path] = compile(path);
-			}
-			return _require.cache[path];
+			return compile(path);
 		}
 		else {
 			return require.apply(this, arguments);
@@ -26,9 +23,17 @@ var _require = (function() {
 	return _require;
 })();
 
-function compile(path, root, log) {
+function compile(path, root, props, log) {
+	props = props || {};
+
 	if (!root) { root = ""; }
 	else { root = root + "/"; }
+
+	path = _path.relative(root, root + path);
+
+	if (path in compile.cache) {
+		return compile.cache[path];
+	}
 
 	console.log("compiling "+_path.relative(root, root+path));
 
@@ -51,21 +56,30 @@ function compile(path, root, log) {
 		process.chdir(root);
 	}
 
-	var exports = new Function("require,module,filepath", src)(
+	var exports = new Function("require,module,filepath,compiled,_", src)(
 		function(path) {
-			if (path.indexOf("./") === 0) { path = process.cwd() + "\\" + path.substring(2); }
+			if (path.indexOf("./") === 0) { path = _path.join(process.cwd(), path); }
 			return _require(path);
 		},
 		{ exports: { } },
-		path
+		path,
+		compile.compiled,
+		props
 	);
 
 	if (root) {
 		process.chdir(oldWD);
 	}
 
+	compile.cache[path] = exports;
+	compile.compiled.push(exports);
+
+	if (exports === undefined) { console.log(path, "==", exports); }
+
 	return exports;
 }
 compile.log = null;
+compile.cache = {};
+compile.compiled = [];
 
 module.exports = compile;
