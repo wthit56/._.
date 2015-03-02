@@ -1,14 +1,18 @@
-var args = process.argv;
+var args = process.argv.slice(2);
 
-var log = process.argv[process.argv.length - 1];
-var logOverwrite = log === "-log!";
-log = log.indexOf("-log") === 0;
+var config = { root: args[0] };
 
-var rebuilds = process.argv.slice(3, log ? -2 : process.argv.length - 1);
+if (args.length === 5) {
+	config.startLiteral = args[1];
+	config.endLiteral = args[2];
+	args.splice(1, 2);
+}
+else if (args.length === 4) {
+	config.findLiteral = new RegExp(args.splice(1, 1)[0], "g");
+}
 
-require("./build.js")(
-	args[2],
-	rebuilds,
-	process.argv[process.argv.length - (log ? 2 : 1)], // build
-	log, logOverwrite
-);
+config.src = args[1] || "";
+config.build = args[2] || "";
+
+//console.log(config);
+require("./build.v2.js")(config);

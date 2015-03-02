@@ -1,2 +1,2 @@
 @echo off
-node "C:\Users\Thomas Giles\JavaScript\._\build-cmd.js" %*
+node "C:\Users\Thomas Giles\JavaScript\._\build-cmd.v2.js" %*

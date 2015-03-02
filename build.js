@@ -1,84 +1,163 @@
 var fs = require("fs"), path = require("path");
+var Compiler = require("./Compiler.js");
 
-var compile = require("./compile.js");
+var cwd, c;
+var compiled;
+function compile(filepath, meta) {
+	if (filepath in compiled) {
+		return compiled[filepath].exports;
+	}
+	else {
+		if (meta == null) { meta = {}; }
+		meta.srcpath = filepath;
+		meta.buildpath = filepath.replace(_part, "");
+		
+		var _module = { exports: {} };
+		c.compile(fs.readFileSync(filepath, "utf-8"))(meta, _module, _require);
 
-function ensureFilepath(root, filepath) {
-	filepath = path.normalize(filepath);
-	var sofar = root;
-	path.dirname(filepath).split(path.sep).forEach(function(dir) {
-		var dirpath = path.join(sofar, dir);
-		sofar = sofar ? sofar + path.sep + dir : dir;
+		var exports = _module.exports; _module = null;
+		compiled.push(compiled[filepath] = { exports: exports, meta: meta });
 
-		if (!fs.existsSync(dirpath) || !fs.statSync(dirpath).isDirectory()) {
-			console.log("creating "+dirpath);
-			fs.mkdir(dirpath);
-		}
-	});
+		return exports;
+	}
 }
 
-function build(src, srcRebuilds, build, log, overwriteLog) {
-	if (log) {
-		var logDest = path.join(src, "-compiled.js");
-		if (overwriteLog || !fs.existsSync(logDest)) {
-			console.log("compiled code will be logged");
-			compile.log = path.resolve(src, "-compiled.js");
-			fs.writeFileSync(logDest, "");
+var isRelative = /^\.\//;
+function _require(filepath) {
+	if (isRelative.test(filepath)) {
+		if (_part.test(filepath)) {
+			return compile(filepath);
 		}
 		else {
-			console.log("compiled code will NOT be logged; "+logDest+" would be overwritten.");
+			return require(path.join(process.cwd(), filepath));
 		}
 	}
-
-	if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) {
-		throw "Specified src path does not exist, or is not a folder: "+path.resolve(src);
+	else {
+		return require(filepath);
 	}
-	if (!fs.existsSync(build) || !fs.statSync(src).isDirectory()) {
-		throw "Specified build path does not exist, or is not a folder: "+path.resolve(build);
-	}
-
-	buildPath(src, "", build);
-
-	if (srcRebuilds && (srcRebuilds.length > 0)) {
-		srcRebuilds.forEach(function(_path) {
-			console.log("rebuilding " + _path);
-			buildFile(src, _path, build);
-		});
-	}
-
-	compile.log = null;
 }
 
-var is_ = /._.js$/;
-function buildPath(src, _path, build) {
-	fs.readdirSync(path.join(src, _path)).forEach(function(filename) {
-		var filepath = path.join(_path, filename);
-		if (filename[0] !== "-") {
-			if (fs.statSync(path.join(src, filepath)).isDirectory()) {
-				buildPath(src, filepath, build);
+function build(config) {
+	//config.setup = "try{"; config.teardown = "}\ncatch(error) { console.log('Error in \'' + meta.srcpath + '\'.'); throw error; }";
+
+	c = new Compiler(config);
+	compiled = [];
+	_module = { exports: null };
+	
+	var cwd = process.cwd();
+	if (config.root) { process.chdir(config.root); }
+
+	console.log("Building '" + config.src + "' -> '" + config.build + "'...");
+
+	if (config.src) { process.chdir(config.src); }
+	console.log("\nCompiling...");
+	compilePath("", config.src !== config.build);
+	console.log("...compilation complete.");
+
+	process.chdir(path.join(config.root || cwd, config.build));
+	if (toWrite.length) {
+		console.log("\nRendering and writing " + toWrite.length + " compiled files...");
+		writeFiles();
+		console.log("...files written.");
+	}
+
+	process.chdir(cwd);
+	cwd = "";
+
+	if (toCopy.length) {
+		console.log("\nCopying " + toCopy.length + " files...");
+		copyFiles(config.root, config.src, config.build);
+		console.log("...files copied.");
+	}
+
+	console.log("\n...building complete.");
+
+	toCopy.length = 0;
+	_module = null;
+	compiled = null;
+	c = null;
+}
+
+var toWrite = [], toCopy = [];
+var isIgnored = /^(?:-|\.git)/, _part = /._.js$/;
+function compilePath(dirpath, allowCopy) {
+	fs.readdirSync(dirpath).forEach(function readdirSync_iteration(filename, i) {
+		var filepath = path.join(dirpath, filename);
+		process.stdout.write("- '" + filepath + "' ");
+
+		if (!isIgnored.test(filename)) {
+			if (fs.statSync(filepath).isDirectory()) {
+				process.stdout.write("\n    scanning directory...\n");
+				compilePath(filepath, allowCopy);
+				process.stdout.write("    ...scan complete.\n");
+				return;
 			}
-			else if (is_.test(filename)) {
-				buildFile(src, filepath, build);
+			else if (_part.test(filename)) {
+				process.stdout.write("to write.\n");
+				toWrite.push(filepath);
+				compile(filepath, { srcpath: filepath, buildpath: filepath.replace(_part, ""), compiled: compiled });
+				return;
 			}
-			else {
-				console.log("copying " + filepath);
-				ensureFilepath(build, filepath);
-				fs.writeFileSync(
-					path.join(build, filepath),
-					fs.readFileSync(path.join(src, filepath))
-				);
+			else if (allowCopy) {
+				process.stdout.write("to copy.\n");
+				toCopy.push(filepath);
 			}
 		}
+
+		process.stdout.write("ignored.\n");
 	});
 }
 
-function buildFile(srcRoot, src, buildRoot) {
-	var built = src.substring(0, src.length - 5);
-	ensureFilepath(buildRoot, built);
-	var data = compile(src, srcRoot, { srcpath: path.join(srcRoot, src), buildpath: built });
+function writeFiles() {
+	while (toWrite.length) {
+		var filepath = toWrite.pop();
+		var _module = compiled[filepath];
+		process.stdout.write("- '" + filepath + "' rendering...\n");
+		
+		var rendered;
+		if (_module.exports instanceof Object) {
+			rendered = _module.exports.toString();
+			if (typeof rendered !== "string") {
+				throw "The compiled module '" + filepath + " has an invalid toString() method defined. A toString method must return .";
+			}
+		}
+		else {
+			rendered = _module.exports + "";	
+		}
 
-	if (!data) { console.log(src, "==", data); }
+		process.stdout.write("    ...rendered. Writing to '" + _module.meta.buildpath + "'...");
+		ensurePath(path.dirname(_module.meta.buildpath));
+		fs.writeFileSync(_module.meta.buildpath, rendered);
+		process.stdout.write("done.\n");
+	}
+}
 
-	fs.writeFileSync(path.join(buildRoot, built), data);
+function copyFiles(root, src, build) {
+	while (toCopy.length) {
+		var filepath = toCopy.pop();
+		console.log("- '" + filepath + "'.");
+		ensurePath(path.dirname(filepath), build);
+		fs.writeFileSync(path.join(root || "", build, filepath), fs.readFileSync(path.join(root || "", src, filepath)));
+	}
+}
+
+function ensurePath(dirpath, root) {
+	var dirs = dirpath.split(path.sep), create = false;
+	dirpath = root || "";
+	for (var i = 0, l = dirs.length; i < l; i++) {
+		dirpath = path.join(dirpath, dirs[i]);
+		if (!create) {
+			if (!fs.existsSync(dirpath)) { create = true; }
+			else if (!fs.statSync(dirpath).isDirectory()) {
+				throw "Path '" + path.join(process.cwd(), dirpath) + "' exists, but is not a directory.";
+			}
+		}
+
+		if (create) {
+			console.log("(created " + dirpath + ")");
+			fs.mkdirSync(dirpath);
+		}
+	}
 }
 
 
