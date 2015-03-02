@@ -15,4 +15,4 @@ config.src = args[1] || "";
 config.build = args[2] || "";
 
 //console.log(config);
-require("./build.v2.js")(config);
+require("./build.js")(config);
