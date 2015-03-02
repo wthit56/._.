@@ -54,10 +54,9 @@ function build(config) {
 	compilePath("", config.src !== config.build);
 	console.log("...compilation complete.");
 
-	process.chdir(path.join(config.root || cwd, config.build));
 	if (toWrite.length) {
 		console.log("\nRendering and writing " + toWrite.length + " compiled files...");
-		writeFiles();
+		writeFiles(config);
 		console.log("...files written.");
 	}
 
@@ -66,7 +65,7 @@ function build(config) {
 
 	if (toCopy.length) {
 		console.log("\nCopying " + toCopy.length + " files...");
-		copyFiles(config.root, config.src, config.build);
+		copyFiles(config);
 		console.log("...files copied.");
 	}
 
@@ -87,9 +86,9 @@ function compilePath(dirpath, allowCopy) {
 
 		if (!isIgnored.test(filename)) {
 			if (fs.statSync(filepath).isDirectory()) {
-				process.stdout.write("\n    scanning directory...\n");
+				process.stdout.write("scanning directory...\n");
 				compilePath(filepath, allowCopy);
-				process.stdout.write("    ...scan complete.\n");
+				process.stdout.write("  ...scan complete.\n");
 				return;
 			}
 			else if (_part.test(filename)) {
@@ -101,6 +100,7 @@ function compilePath(dirpath, allowCopy) {
 			else if (allowCopy) {
 				process.stdout.write("to copy.\n");
 				toCopy.push(filepath);
+				return;
 			}
 		}
 
@@ -108,7 +108,7 @@ function compilePath(dirpath, allowCopy) {
 	});
 }
 
-function writeFiles() {
+function writeFiles(config) {
 	while (toWrite.length) {
 		var filepath = toWrite.pop();
 		var _module = compiled[filepath];
@@ -118,26 +118,26 @@ function writeFiles() {
 		if (_module.exports instanceof Object) {
 			rendered = _module.exports.toString();
 			if (typeof rendered !== "string") {
-				throw "The compiled module '" + filepath + " has an invalid toString() method defined. A toString method must return .";
+				throw "The compiled module '" + filepath + " has an invalid toString() method defined. A toString method must return a primitive string value.";
 			}
 		}
 		else {
 			rendered = _module.exports + "";	
 		}
 
-		process.stdout.write("    ...rendered. Writing to '" + _module.meta.buildpath + "'...");
-		ensurePath(path.dirname(_module.meta.buildpath));
-		fs.writeFileSync(_module.meta.buildpath, rendered);
+		process.stdout.write("  done. Writing...");
+		ensurePath(path.dirname(_module.meta.buildpath), path.join(config.root, config.build));
+		fs.writeFileSync(path.join(config.root, config.build, _module.meta.buildpath), rendered);
 		process.stdout.write("done.\n");
 	}
 }
 
-function copyFiles(root, src, build) {
+function copyFiles(config) {
 	while (toCopy.length) {
 		var filepath = toCopy.pop();
 		console.log("- '" + filepath + "'.");
-		ensurePath(path.dirname(filepath), build);
-		fs.writeFileSync(path.join(root || "", build, filepath), fs.readFileSync(path.join(root || "", src, filepath)));
+		ensurePath(path.dirname(filepath), path.join(config.root, config.build));
+		fs.writeFileSync(path.join(config.root || "", config.build, filepath), fs.readFileSync(path.join(config.root || "", config.src, filepath)));
 	}
 }
 
@@ -154,7 +154,6 @@ function ensurePath(dirpath, root) {
 		}
 
 		if (create) {
-			console.log("(created " + dirpath + ")");
 			fs.mkdirSync(dirpath);
 		}
 	}
